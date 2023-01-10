@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-import datasets
+import kws_datasets
 from ge2e import (
     GE2ELoss,
     SpeechEmbedder,
@@ -25,12 +25,12 @@ def trainer_pl(device=device):
     D = 256  # Dimensions of the speaker embeddings, such as a d-vector or x-vector
 
     # Create training and testing split of the data. We do not use validation in this tutorial.
-    # train_dataset = datasets.SCEmbed("training", M_utterances=M, N_speakers=N)
+    # train_dataset = kws_datasets.SCEmbed("training", M_utterances=M, N_speakers=N)
     # train_loader = DataLoader(train_dataset, batch_size=N)
 
     # https://teddykoker.com/2020/12/dataloader/
-    train_dataset = datasets.SpeechCommandsUtterances("training", M_utterances=M)
-    val_dataset = datasets.SpeechCommandsUtterances("validation", M_utterances=M)
+    train_dataset = kws_datasets.SpeechCommandsUtterances("training", M_utterances=M)
+    val_dataset = kws_datasets.SpeechCommandsUtterances("validation", M_utterances=M)
 
     train_loader = DataLoader(train_dataset, batch_size=N, shuffle=True, num_workers=16)
     val_loader = DataLoader(val_dataset, batch_size=N, shuffle=False, num_workers=16)
@@ -48,12 +48,12 @@ def trainer(device=device):
     D = 256  # Dimensions of the speaker embeddings, such as a d-vector or x-vector
 
     # Create training and testing split of the data. We do not use validation in this tutorial.
-    # train_dataset = datasets.SCEmbed("training", M_utterances=M, N_speakers=N)
+    # train_dataset = kws_datasets.SCEmbed("training", M_utterances=M, N_speakers=N)
     # train_loader = DataLoader(train_dataset, batch_size=N)
 
     # https://teddykoker.com/2020/12/dataloader/
-    train_dataset = datasets.SpeechCommandsUtterances("training", M_utterances=M)
-    train_dataset = datasets.SpeechCommandsUtterances("validation", M_utterances=M)
+    train_dataset = kws_datasets.SpeechCommandsUtterances("training", M_utterances=M)
+    train_dataset = kws_datasets.SpeechCommandsUtterances("validation", M_utterances=M)
 
     train_loader = DataLoader(train_dataset, batch_size=N, shuffle=True, num_workers=16)
 
