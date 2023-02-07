@@ -279,7 +279,7 @@ class GE2ELossV0(nn.Module):
         return torch.stack(L)
 
     def embed_loss_contrast(self, dvecs, cos_sim_matrix):
-        """ 
+        """
         Calculates the loss on each embedding $L(e_{ji})$ by contrast loss with closest centroid
         """
         N, M, _ = dvecs.shape
@@ -313,4 +313,3 @@ class GE2ELossV0(nn.Module):
         cos_sim_matrix = cos_sim_matrix * self.w + self.b
         L = self.embed_loss(dvecs, cos_sim_matrix)
         return L.sum()
-

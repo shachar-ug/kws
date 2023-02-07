@@ -231,7 +231,6 @@ class SpeechCommandsUtterances_Old(SPEECHCOMMANDS):
         # zero_ffd2ba2f elf._speakers_id['three_7fd25f7c']-> [105570, 105571, 105572, 105573, 105574]
         # where the [] ids are indices of SPEECHCOMMANDS dataset
         self._speakers_id = list(self._speakers)
-        ipdb.set_trace()
 
         # files:
         # files_ids = (self._speakers["three_7fd25f7c"],)
@@ -274,7 +273,13 @@ class SpeechCommandsUtterances_Old(SPEECHCOMMANDS):
             ) = super().__getitem__(file_id)
 
             width = int(self.dt * sample_rate)
-            start = randint(0, waveform.shape[1] - width)
+            print("waveform.shape=", waveform.shape)
+            print("width=", width)
+            print("---------------------------------------------")
+            try:
+                start = randint(0, waveform.shape[1] - width)
+            except:
+                ipdb.set_trace()
             waveform = waveform[:, start : start + width]
             x.append(waveform)
 
@@ -309,6 +314,7 @@ class SpeechCommandsUtterances(SPEECHCOMMANDS):
         subset: str = None,
         M_utterances: int = 10,
         mode: str = "all",
+        transformations=[],
         debug: bool = False,
     ):
         global WORDS
@@ -322,6 +328,7 @@ class SpeechCommandsUtterances(SPEECHCOMMANDS):
                     for line in fileobj
                 ]
 
+        self._transformations = transformations
         self._mode = mode
         self.M_utterances = M_utterances
         self.dt = 0.5  # [sec]
@@ -344,6 +351,8 @@ class SpeechCommandsUtterances(SPEECHCOMMANDS):
             info = torchaudio.info(filename)
             length = info.num_frames / info.sample_rate
             if length < 0.25:  # [sec]
+                continue
+            if info.num_frames < 8000:
                 continue
             self._speakers[self.create_label(label, speaker_id)].append(n)
 
@@ -379,8 +388,25 @@ class SpeechCommandsUtterances(SPEECHCOMMANDS):
     def parse_label(self, n):
         label_speaker_id = self._speakers_id[n]
         file_ids = self._speakers[label_speaker_id]
-        label, label_speaker_id = self.get_metadata(file_ids[0])[2:4]
-        return label, label_speaker_id
+        file_path, fs, label, label_speaker_id, utterance_number = self.get_metadata(
+            file_ids[0]
+        )
+        if len(file_ids) > 1:
+            for i, file_id in enumerate(file_ids[1:]):
+                (
+                    file_path_i,
+                    fs_i,
+                    label_i,
+                    label_speaker_id_i,
+                    utterance_number_i,
+                ) = self.get_metadata(file_id)
+                assert file_path_i == file_path
+                assert fs_i == fs
+                assert label_i == label
+                assert label_speaker_id_i == label_speaker_id
+                assert utterance_number_i == utterance_number
+
+        return file_path, fs, label, label_speaker_id, utterance_number
 
     def __getitem__(self, n):
         """_summary_
@@ -394,7 +420,10 @@ class SpeechCommandsUtterances(SPEECHCOMMANDS):
         label_speaker_id = self._speakers_id[n]
         n_speaker_label = self._speakers[label_speaker_id]
         num_of_files = len(n_speaker_label)
-        files_ids = choices(n_speaker_label, k=min(num_of_files, self.M_utterances),)
+        files_ids = choices(
+            n_speaker_label,
+            k=min(num_of_files, self.M_utterances),
+        )
         remaining_uttr = self.M_utterances - len(files_ids)
         files_ids += choices(n_speaker_label, k=remaining_uttr)
         x, y = [], []
@@ -408,7 +437,12 @@ class SpeechCommandsUtterances(SPEECHCOMMANDS):
             ) = super().__getitem__(file_id)
 
             width = int(self.dt * sample_rate)
-            start = randint(0, waveform.shape[1] - width)
+            start = 0
+            if "random_start" in self._transformations:
+                try:
+                    start = randint(0, waveform.shape[1] - width)
+                except:
+                    pass
             waveform = waveform[:, start : start + width]
             x.append(waveform)
 
@@ -423,12 +457,26 @@ class SpeechCommandsUtterances(SPEECHCOMMANDS):
 
 def sce_collate(data):
     """
-       data: is a list of tuples with (example, label, length)
-             where 'example' is a tensor of arbitrary shape
-             and label/length are scalars
+    data: is a list of tuples with (example, label, length)
+          where 'example' is a tensor of arbitrary shape
+          and label/length are scalars
     """
 
     x, y = zip(*data)
     x = [torch.cat(_x) for _x in x]
     y = [torch.tensor(_y) for _y in y]
     return x, y
+
+
+if __name__ == "__main__":
+    from torch.utils.data import DataLoader
+
+    N = 64  # Number of speakers in a batch
+    M = 10  # Number of utterances for each speaker
+    D = 256  # Dimensions of the speaker embeddings, such as a d-vector or x-vector
+
+    num_workers = 16
+    train_dataset = SpeechCommandsUtterances("training", M_utterances=M)
+    train_loader = DataLoader(
+        train_dataset, batch_size=N, shuffle=True, num_workers=num_workers
+    )

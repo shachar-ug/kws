@@ -32,10 +32,14 @@ def trainer_pl(device=device):
     train_dataset = kws_datasets.SpeechCommandsUtterances("training", M_utterances=M)
     val_dataset = kws_datasets.SpeechCommandsUtterances("validation", M_utterances=M)
 
-    train_loader = DataLoader(train_dataset, batch_size=N, shuffle=True, num_workers=16)
-    val_loader = DataLoader(val_dataset, batch_size=N, shuffle=False, num_workers=16)
-
-    trainer = pl.Trainer(max_epochs=10, accelerator=device)
+    num_workers = 32
+    train_loader = DataLoader(
+        train_dataset, batch_size=N, shuffle=True, num_workers=num_workers
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=N, shuffle=False, num_workers=num_workers
+    )
+    trainer = pl.Trainer(max_epochs=5000, accelerator=device)
     model = SpeechEmbedderLit()
 
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
