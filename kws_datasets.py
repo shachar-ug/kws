@@ -455,6 +455,152 @@ class SpeechCommandsUtterances(SPEECHCOMMANDS):
         return self._num2words[y]
 
 
+class SpeechCommandsUtterances(SPEECHCOMMANDS):
+    def __init__(
+        self,
+        subset: str = None,
+        M_utterances: int = 10,
+        mode: str = "all",
+        transformations=[],
+        debug: bool = False,
+    ):
+        global WORDS
+        super().__init__("./", download=True)
+
+        def load_list(filename):
+            filepath = os.path.join(self._path, filename)
+            with open(filepath) as fileobj:
+                return [
+                    Path(os.path.normpath(os.path.join(self._path, line.strip())))
+                    for line in fileobj
+                ]
+
+        self._transformations = transformations
+        self._mode = mode
+        self.M_utterances = M_utterances
+        self.dt = 0.5  # [sec]
+
+        if subset == "validation":
+            self._walker = load_list("validation_list.txt")
+        elif subset == "testing":
+            self._walker = load_list("testing_list.txt")
+        elif subset == "training":
+            excludes = load_list("validation_list.txt") + load_list("testing_list.txt")
+            excludes = set(excludes)
+            self._walker = [w for w in self._walker if w not in excludes]
+
+        # build database
+        self._speakers = defaultdict(list)
+        for n, filename in enumerate(self._walker):
+            # word_speaker = extract_word_speaker(filename)
+            audio_path, rate, label, speaker_id, uttn_num = self.get_metadata(n)
+
+            info = torchaudio.info(filename)
+            length = info.num_frames / info.sample_rate
+            if length < 0.25:  # [sec]
+                continue
+            if info.num_frames < 8000:
+                continue
+            self._speakers[self.create_label(label, speaker_id)].append(n)
+
+        self.n2label = list(self._speakers.keys())
+        self.label2n = dict(zip(*list(zip(*enumerate(self.n2label)))[::-1]))
+        # this inverts. trust me.
+
+        self._speakers = dict(self._speakers)
+
+        # speakers id is a list of unique (speaker, work) such as zero_#
+        # zero_ffbb695d -> [105567, 105568, 105569]
+        # zero_ffd2ba2f elf._speakers_id['three_7fd25f7c']-> [105570, 105571, 105572, 105573, 105574]
+        # where the [] ids are indices of SPEECHCOMMANDS dataset
+        self._speakers_id = list(self._speakers)
+
+        # verification
+        for files_ids in self._speakers.values():
+            labels, spaeker_ids = [], []
+            for fid in files_ids:
+                label, speaker_id = self.get_metadata(fid)[2:4]
+                labels.append(label)
+                spaeker_ids.append(speaker_id)
+
+            assert len(set(labels)) == 1
+            assert len(set(spaeker_ids)) == 1
+
+    def __len__(self) -> int:
+        return len(self._speakers_id)
+
+    def create_label(self, label, speaker_id):
+        return f"{label}_{speaker_id}"
+
+    def parse_label(self, n):
+        label_speaker_id = self._speakers_id[n]
+        file_ids = self._speakers[label_speaker_id]
+        file_path, fs, label, label_speaker_id, utterance_number = self.get_metadata(
+            file_ids[0]
+        )
+        if len(file_ids) > 1:
+            for i, file_id in enumerate(file_ids[1:]):
+                (
+                    file_path_i,
+                    fs_i,
+                    label_i,
+                    label_speaker_id_i,
+                    utterance_number_i,
+                ) = self.get_metadata(file_id)
+                assert file_path_i == file_path
+                assert fs_i == fs
+                assert label_i == label
+                assert label_speaker_id_i == label_speaker_id
+                assert utterance_number_i == utterance_number
+
+        return file_path, fs, label, label_speaker_id, utterance_number
+
+    def __getitem__(self, n):
+        """_summary_
+
+        Args:
+            n (int): sample n out of len of speaker ids
+
+        Returns:
+            _type_: self.M utterances
+        """
+        label_speaker_id = self._speakers_id[n]
+        n_speaker_label = self._speakers[label_speaker_id]
+        num_of_files = len(n_speaker_label)
+        files_ids = choices(
+            n_speaker_label,
+            k=min(num_of_files, self.M_utterances),
+        )
+        remaining_uttr = self.M_utterances - len(files_ids)
+        files_ids += choices(n_speaker_label, k=remaining_uttr)
+        x, y = [], []
+        for file_id in files_ids:
+            (
+                waveform,
+                sample_rate,
+                label,
+                speaker_id,
+                utterance_number,
+            ) = super().__getitem__(file_id)
+
+            width = int(self.dt * sample_rate)
+            start = 0
+            if "random_start" in self._transformations:
+                try:
+                    start = randint(0, waveform.shape[1] - width)
+                except:
+                    pass
+            waveform = waveform[:, start : start + width]
+            x.append(waveform)
+
+        # single label
+        x = torch.cat(x)  # [M_utterances, t]
+        y = self.label2n[self.create_label(label, speaker_id)]
+        return (x, y)
+
+    def parse(self, y):
+        return self._num2words[y]
+
 def sce_collate(data):
     """
     data: is a list of tuples with (example, label, length)
